@@ -2,7 +2,6 @@ services:
   - type: web
     name: image-logger
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    plan: free
-    autoDeploy: true
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    port: 10000
